@@ -1,0 +1,77 @@
+variables:
+  PERIOD: yesterday
+  TARGET_REPO:
+  TARGET_REPO_USER:
+  TARGET_REPO_TOKEN:
+  SPEC_PATH: api.yaml
+  WEBHOOK_URL:
+
+apichanges:
+  stage: run
+  image: alpine:latest
+  variables:
+    GIT_STRATEGY: clone
+
+  before_script:
+    - apk add --no-cache git bash curl
+    # install oasdiff tool
+    - curl -fsSL https://raw.githubusercontent.com/oasdiff/oasdiff/main/install.sh | sh
+  script:
+    # prepare files
+    - git clone https://${TARGET_REPO_USER}:${TARGET_REPO_TOKEN}@${TARGET_REPO} target_repo
+
+    - cp apichanges.sh target_repo/
+    - chmod +x target_repo/apichanges.sh
+    - cp gitlab/sendwebhook.sh target_repo/
+    - chmod +x target_repo/sendwebhook.sh
+    - cp oasdiff-levels.txt target_repo/
+
+    - |
+      if [ "$PERIOD" = "WEEK" ]; then
+        PERIOD_FLAG="-w"
+        PERIOD_DESC="for the last 7 days"
+        echo "Using period: $PERIOD_DESC"
+      elif [ "$PERIOD" = "YESTERDAY" ]; then
+        PERIOD_FLAG="-y"
+        PERIOD_DESC="for yesterday"
+        echo "Using period: $PERIOD_DESC"
+      else
+        PERIOD_FLAG="-t"
+        PERIOD_DESC="for today"
+        echo "Using period: $PERIOD_DESC (default)"
+      fi
+
+    - mkdir -p public/api-changes
+    - cd target_repo
+
+      # Run the changes analysis
+    - ./apichanges.sh $PERIOD_FLAG "$SPEC_PATH"
+
+      # Copy results with unique names
+    - cp changelog.html "../public/api-changes/diff-${PREFIX}.html"
+
+      # Send notification
+    - export HEADER="📰 Changes in API ${PERIOD_DESC}"
+    - export PAGES_URL="${CI_PAGES_URL}/api-changes/changelog-{CI_PIPELINE_ID}.html"
+    - ./sendwebhook.sh $PERIOD_FLAG
+
+    - echo "Done"
+  retry: 2
+  artifacts:
+    paths:
+      - public/ # Directory with HTML files for GitLab Pages
+    expire_in: 1 week
+  tags:
+    - your-runner
+
+pages:
+  stage: pages
+  dependencies:
+    - apichanges
+  script:
+    - echo "Publishing pages..."
+  artifacts:
+    paths:
+      - public
+  tags:
+    - your-runner

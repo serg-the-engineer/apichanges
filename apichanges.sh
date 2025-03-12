@@ -234,5 +234,5 @@ fi
 
 # Cleanup
 if [ "$CLEAN" = true ]; then
-    rm changelog.html breaking.md v1.yaml v2.yaml
+    rm summary.yaml changelog.html breaking.md v1.yaml v2.yaml
 fi
